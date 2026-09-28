@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mobile Dashboard Mockup</title>
+<style>
+  :root { --brand:#004085; --bg:#f4f4f4; --card:#fff; --text:#1d2330; --muted:#5f6b7a; --line:#e3e6ea; --ok:#1e7b4f; --warn:#b26a00; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121417; --card:#1c1f24; --text:#e8eaed; --muted:#9aa3ad; --line:#2c3138; --brand:#4d8fd6; } }
+  :root[data-theme="dark"] { --bg:#121417; --card:#1c1f24; --text:#e8eaed; --muted:#9aa3ad; --line:#2c3138; --brand:#4d8fd6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#d9dde2; font-family:Arial, sans-serif; color:var(--text); display:flex; justify-content:center; padding:24px 16px; }
+  .phone { width:100%; max-width:390px; height:780px; background:var(--bg); border-radius:36px; border:10px solid #111; overflow:hidden; display:flex; flex-direction:column; position:relative; }
+  .appbar { background:var(--brand); color:#fff; padding:18px 16px 14px; font-weight:bold; font-size:16px; line-height:1.4; }
+  .appbar small { display:block; font-weight:normal; opacity:.8; font-size:12px; margin-top:2px; }
+  .content { flex:1; overflow-y:auto; padding:16px; }
+  .panel { animation:fadeUp .3s ease; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
+  .card { background:var(--card); border-radius:12px; box-shadow:0 2px 5px rgba(0,0,0,.08); margin-bottom:12px; overflow:hidden; }
+  .card-outlined { box-shadow:none; border:1px solid var(--line); }
+  .card-header { padding:12px 14px 0; font-size:13px; color:var(--muted); }
+  .card-body { padding:6px 14px 14px; }
+  .kpi { font-size:32px; font-weight:bold; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid .card { margin:0; }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:8px; }
+  .bar > span { display:block; height:100%; background:var(--ok); }
+  .tab-list { display:flex; border-top:1px solid var(--line); background:var(--card); padding-bottom:14px; }
+  .tab-list button { flex:1; border:0; background:none; padding:10px 2px 6px; font:inherit; font-size:11px; color:var(--muted); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .tab-list button .ic { font-size:20px; }
+  .tab-list button.active { color:var(--brand); font-weight:bold; }
+  .tab-list button:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
+  iframe { width:100%; height:520px; border:0; display:block; background:#fff; }
+  .skeleton { height:520px; background:linear-gradient(90deg,var(--line),var(--card),var(--line)); background-size:200% 100%; animation:shimmer 1.2s infinite; }
+  @keyframes shimmer { to { background-position:-200% 0; } }
+  label { display:block; font-size:13px; margin:10px 0 4px; color:var(--muted); }
+  input { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; font:inherit; background:var(--bg); color:var(--text); }
+  .error { color:var(--err); font-size:12px; }
+  .btn { width:100%; margin-top:14px; padding:12px; border:0; border-radius:8px; background:var(--brand); color:#fff; font:inherit; font-weight:bold; cursor:pointer; }
+  .btn-ghost { background:none; color:var(--brand); border:1px solid var(--brand); }
+  .note { font-size:12px; color:var(--muted); margin-top:8px; }
+  .toast { background:var(--ok); color:#fff; padding:10px; border-radius:8px; font-size:13px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { createContext, useContext, useState, useReducer, useMemo, useCallback, useRef, useEffect, lazy, Suspense } = React;
+
+/* ── Pattern: Context + Reducer (single source of truth for the survey numbers) ── */
+const initialState = { completed: 6, requests: 8, updatedAt: '2025-02-10 19:00' };
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'UPDATE_TOTALS':
+      return { ...state, ...action.payload };
+    default:
+      return state;
+  }
+}
+
+const SurveyContext = createContext(undefined);
+
+function SurveyProvider({ children }) {
+  const [state, dispatch] = useReducer(reducer, initialState);
+  return <SurveyContext.Provider value={{ state, dispatch }}>{children}</SurveyContext.Provider>;
+}
+
+function useSurvey() {
+  const ctx = useContext(SurveyContext);
+  if (!ctx) throw new Error('useSurvey must be used within SurveyProvider');
+  return ctx;
+}
+
+/* ── Pattern: Composition over inheritance (Card / CardHeader / CardBody) ── */
+function Card({ children, variant = 'default' }) {
+  return <div className={`card ${variant === 'outlined' ? 'card-outlined' : ''}`}>{children}</div>;
+}
+function CardHeader({ children }) { return <div className="card-header">{children}</div>; }
+function CardBody({ children }) { return <div className="card-body">{children}</div>; }
+
+/* ── Pattern: Compound components (Tabs / TabList / Tab / TabPanel) + keyboard navigation ── */
+const TabsContext = createContext(undefined);
+
+function Tabs({ children, defaultTab, order }) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  return <TabsContext.Provider value={{ activeTab, setActiveTab, order }}>{children}</TabsContext.Provider>;
+}
+
+function useTabs() {
+  const ctx = useContext(TabsContext);
+  if (!ctx) throw new Error('Tab must be used within Tabs');
+  return ctx;
+}
+
+function TabList({ children, label }) {
+  const { activeTab, setActiveTab, order } = useTabs();
+  const listRef = useRef(null);
+
+  // Arrow keys move between tabs; in RTL, ArrowLeft goes to the next tab.
+  const handleKeyDown = (e) => {
+    const i = order.indexOf(activeTab);
+    let next = null;
+    if (e.key === 'ArrowLeft') next = order[Math.min(i + 1, order.length - 1)];
+    if (e.key === 'ArrowRight') next = order[Math.max(i - 1, 0)];
+    if (e.key === 'Home') next = order[0];
+    if (e.key === 'End') next = order[order.length - 1];
+    if (next) {
+      e.preventDefault();
+      setActiveTab(next);
+      listRef.current?.querySelector(`#tab-${next}`)?.focus();
+    }
+  };
+
+  return <div className="tab-list" role="tablist" aria-label={label} ref={listRef} onKeyDown={handleKeyDown}>{children}</div>;
+}
+
+function Tab({ id, icon, children }) {
+  const { activeTab, setActiveTab } = useTabs();
+  const selected = activeTab === id;
+  return (
+    <button id={`tab-${id}`} role="tab" aria-selected={selected} aria-controls={`panel-${id}`}
+      tabIndex={selected ? 0 : -1} className={selected ? 'active' : ''} onClick={() => setActiveTab(id)}>
+      <span className="ic" aria-hidden="true">{icon}</span>{children}
+    </button>
+  );
+}
+
+// Only the active panel is mounted, so hidden forms never load.
+function TabPanel({ id, children }) {
+  const { activeTab } = useTabs();
+  if (activeTab !== id) return null;
+  return <div className="panel" role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={0}>{children}</div>;
+}
+
+/* ── Pattern: Error boundary ── */
+class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error('Error boundary caught:', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card><CardBody>
+          <h3>حدث خطأ</h3><p className="note">{this.state.error?.message}</p>
+          <button className="btn btn-ghost" onClick={() => this.setState({ hasError: false })}>إعادة المحاولة</button>
+        </CardBody></Card>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ── Pattern: Custom hook (useToggle) ── */
+function useToggle(initial = false) {
+  const [value, setValue] = useState(initial);
+  const toggle = useCallback(() => setValue(v => !v), []);
+  return [value, toggle];
+}
+
+/* ── Pattern: Code splitting & lazy loading (heavy QuestionPro embed behind Suspense) ── */
+const SurveyEmbed = lazy(() => Promise.resolve({
+  default: function SurveyEmbed({ src, title }) {
+    return <iframe src={src} title={title} loading="lazy" />;
+  }
+}));
+
+/* ── Pattern: Memoization (React.memo for pure KPI card, useMemo for derived numbers) ── */
+const KpiCard = React.memo(function KpiCard({ label, value, children }) {
+  return (
+    <Card>
+      <CardHeader>{label}</CardHeader>
+      <CardBody><div className="kpi">{value}</div>{children}</CardBody>
+    </Card>
+  );
+});
+
+/* ── Tab 1: Overview ── */
+function OverviewTab() {
+  const { state } = useSurvey();
+  const { rate, pending } = useMemo(() => ({
+    rate: state.requests ? Math.round((state.completed / state.requests) * 100) : 0,
+    pending: Math.max(state.requests - state.completed, 0),
+  }), [state.completed, state.requests]);
+
+  return (
+    <>
+      <div className="grid">
+        <KpiCard label="إجمالي المكتملين" value={state.completed} />
+        <KpiCard label="إجمالي الطلبات" value={state.requests} />
+      </div>
+      <div style={{ height: 12 }} />
+      <KpiCard label="نسبة الإكمال" value={`${rate}%`}>
+        <div className="bar" role="progressbar" aria-valuenow={rate} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${rate}%` }} /></div>
+        <p className="note">{pending} طلبات غير مكتملة أو مكررة</p>
+      </KpiCard>
+      <Card variant="outlined">
+        <CardHeader>آخر تحديث</CardHeader>
+        <CardBody><strong>{state.updatedAt}</strong></CardBody>
+      </Card>
+    </>
+  );
+}
+
+/* ── Tabs 2 & 3: Survey forms (lazy + Suspense skeleton + error boundary) ── */
+function FormTab({ title, hint, src }) {
+  const [showHint, toggleHint] = useToggle(true);
+  return (
+    <>
+      <Card>
+        <CardHeader>{title}</CardHeader>
+        <CardBody>
+          {showHint && <p className="note">{hint}</p>}
+          <button className="btn btn-ghost" onClick={toggleHint} aria-expanded={showHint}>{showHint ? 'إخفاء التعليمات' : 'عرض التعليمات'}</button>
+        </CardBody>
+      </Card>
+      <Card>
+        <ErrorBoundary>
+          <Suspense fallback={<div className="skeleton" aria-label="جاري التحميل" />}>
+            <SurveyEmbed src={src} title={title} />
+          </Suspense>
+        </ErrorBoundary>
+      </Card>
+    </>
+  );
+}
+
+/* ── Tab 4: Update totals (controlled form with validation → dispatch) ── */
+function UpdateTab() {
+  const { state, dispatch } = useSurvey();
+  const [formData, setFormData] = useState({ completed: String(state.completed), requests: String(state.requests), updatedAt: state.updatedAt });
+  const [errors, setErrors] = useState({});
+  const [saved, setSaved] = useState(false);
+
+  const validate = () => {
+    const e = {};
+    const c = Number(formData.completed), r = Number(formData.requests);
+    if (formData.completed === '' || !Number.isInteger(c) || c < 0) e.completed = 'أدخل رقمًا صحيحًا';
+    if (formData.requests === '' || !Number.isInteger(r) || r < 0) e.requests = 'أدخل رقمًا صحيحًا';
+    else if (!e.completed && c > r) e.completed = 'لا يمكن أن يتجاوز المكتملون عدد الطلبات';
+    if (!formData.updatedAt.trim()) e.updatedAt = 'وقت التحديث مطلوب';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setSaved(false);
+    if (!validate()) return;
+    dispatch({ type: 'UPDATE_TOTALS', payload: { completed: Number(formData.completed), requests: Number(formData.requests), updatedAt: formData.updatedAt.trim() } });
+    setSaved(true);
+  };
+
+  const field = (key, label, type = 'text') => (
+    <>
+      <label htmlFor={key}>{label}</label>
+      <input id={key} type={type} inputMode={type === 'number' ? 'numeric' : undefined} value={formData[key]}
+        aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `${key}-err` : undefined}
+        onChange={ev => setFormData(prev => ({ ...prev, [key]: ev.target.value }))} />
+      {errors[key] && <span id={`${key}-err`} className="error">{errors[key]}</span>}
+    </>
+  );
+
+  return (
+    <>
+      {saved && <div className="toast" role="status">تم الحفظ — راجع تبويب «نظرة عامة»</div>}
+      <Card>
+        <CardHeader>تحديث الأرقام يدويًا</CardHeader>
+        <CardBody>
+          <form onSubmit={handleSubmit} noValidate>
+            {field('completed', 'إجمالي المكتملين', 'number')}
+            {field('requests', 'إجمالي الطلبات', 'number')}
+            {field('updatedAt', 'وقت آخر تحديث')}
+            <button type="submit" className="btn">حفظ</button>
+          </form>
+        </CardBody>
+      </Card>
+    </>
+  );
+}
+
+/* ── App shell ── */
+const TAB_ORDER = ['overview', 'register', 'confirm', 'update'];
+
+function App() {
+  return (
+    <SurveyProvider>
+      <ErrorBoundary>
+        <Tabs defaultTab="overview" order={TAB_ORDER}>
+          <div className="phone">
+            <header className="appbar">تأكيد حضور العرض الروسي<small>وزارة الثقافة</small></header>
+            <main className="content">
+              <TabPanel id="overview"><OverviewTab /></TabPanel>
+              <TabPanel id="register"><FormTab title="نموذج التسجيل" hint="نموذج طلب التسجيل في العرض (QuestionPro)." src="https://questionpro.com/t/ZR9JGmZBzg23YC" /></TabPanel>
+              <TabPanel id="confirm"><FormTab title="نموذج تأكيد الحضور" hint="نموذج تأكيد حضور المسجلين (QuestionPro)." src="https://questionpro.com/t/ZR9JGmZBzg23YE" /></TabPanel>
+              <TabPanel id="update"><UpdateTab /></TabPanel>
+            </main>
+            <TabList label="أقسام اللوحة">
+              <Tab id="overview" icon="📊">نظرة عامة</Tab>
+              <Tab id="register" icon="📝">التسجيل</Tab>
+              <Tab id="confirm" icon="✅">التأكيد</Tab>
+              <Tab id="update" icon="✏️">تحديث</Tab>
+            </TabList>
+          </div>
+        </Tabs>
+      </ErrorBoundary>
+    </SurveyProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
